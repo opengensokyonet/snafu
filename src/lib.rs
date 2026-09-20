@@ -633,8 +633,7 @@ pub trait ResultExt<T, E>: Sized {
     /// so the types are not required to exactly match.
     fn context<C, E2>(self, context: C) -> Result<T, E2>
     where
-        C: IntoError<E2, Source = E>,
-        E2: Error + ErrorCompat;
+        C: IntoError<E2, Source = E>;
 
     /// Extend a [`Result`][]'s error with lazily-generated context-sensitive information.
     ///
@@ -672,8 +671,7 @@ pub trait ResultExt<T, E>: Sized {
     fn with_context<F, C, E2>(self, context: F) -> Result<T, E2>
     where
         F: FnOnce(&mut E) -> C,
-        C: IntoError<E2, Source = E>,
-        E2: Error + ErrorCompat;
+        C: IntoError<E2, Source = E>;
 
     /// Extend a [`Result`]'s error with information from a string.
     ///
@@ -873,7 +871,6 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
     fn context<C, E2>(self, context: C) -> Result<T, E2>
     where
         C: IntoError<E2, Source = E>,
-        E2: Error + ErrorCompat,
     {
         // https://github.com/rust-lang/rust/issues/74042
         match self {
@@ -887,7 +884,6 @@ impl<T, E> ResultExt<T, E> for Result<T, E> {
     where
         F: FnOnce(&mut E) -> C,
         C: IntoError<E2, Source = E>,
-        E2: Error + ErrorCompat,
     {
         // https://github.com/rust-lang/rust/issues/74042
         match self {
@@ -989,8 +985,7 @@ pub trait OptionExt<T>: Sized {
     /// so the types are not required to exactly match.
     fn context<C, E>(self, context: C) -> Result<T, E>
     where
-        C: IntoError<E, Source = NoneError>,
-        E: Error + ErrorCompat;
+        C: IntoError<E, Source = NoneError>;
 
     /// Convert an [`Option`][] into a [`Result`][] with
     /// lazily-generated context-sensitive information.
@@ -1029,8 +1024,7 @@ pub trait OptionExt<T>: Sized {
     fn with_context<F, C, E>(self, context: F) -> Result<T, E>
     where
         F: FnOnce() -> C,
-        C: IntoError<E, Source = NoneError>,
-        E: Error + ErrorCompat;
+        C: IntoError<E, Source = NoneError>;
 
     /// Convert an [`Option`] into a [`Result`] with information
     /// from a string.
@@ -1112,7 +1106,6 @@ impl<T> OptionExt<T> for Option<T> {
     fn context<C, E>(self, context: C) -> Result<T, E>
     where
         C: IntoError<E, Source = NoneError>,
-        E: Error + ErrorCompat,
     {
         // https://github.com/rust-lang/rust/issues/74042
         match self {
@@ -1126,7 +1119,6 @@ impl<T> OptionExt<T> for Option<T> {
     where
         F: FnOnce() -> C,
         C: IntoError<E, Source = NoneError>,
-        E: Error + ErrorCompat,
     {
         // https://github.com/rust-lang/rust/issues/74042
         match self {
@@ -1181,6 +1173,11 @@ impl<T> OptionExt<T> for Option<T> {
 /// error.backtrace();              // Discouraged
 /// # }
 /// ```
+///
+/// This trait does not require [`Error`], [`core::fmt::Debug`], or
+/// [`core::fmt::Display`]. Backtrace access and standard error-chain access
+/// are separate capabilities; [`ErrorCompat::iter_chain`] additionally
+/// requires [`AsErrorSource`].
 pub trait ErrorCompat {
     /// Returns a [`Backtrace`][] that may be printed.
     fn backtrace(&self) -> Option<&Backtrace> {
@@ -1297,10 +1294,12 @@ where
 ///
 /// It is expected that most users of SNAFU will not directly interact
 /// with this trait.
-pub trait IntoError<E>
-where
-    E: Error + ErrorCompat,
-{
+///
+/// Constructing `E` does not require it to implement
+/// [`Error`] or [`ErrorCompat`]. Callers that report the result must add
+/// the diagnostic bounds they use. A generated selector may still require
+/// source capabilities for source-aware [`GenerateImplicitData`].
+pub trait IntoError<E> {
     /// The underlying error
     type Source;
 

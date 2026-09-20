@@ -6,6 +6,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use std::collections::BTreeSet;
 
+mod bounds;
 mod parse;
 mod shared;
 
@@ -41,6 +42,7 @@ enum SnafuInfo {
 }
 
 struct EnumInfo {
+    display_bounds: Option<Vec<syn::WherePredicate>>,
     crate_root: UserInput,
     name: syn::Ident,
     generics: syn::Generics,
@@ -52,6 +54,7 @@ struct EnumInfo {
 
 /// A struct or enum variant, with named fields.
 struct FieldContainer {
+    display_bounds: Option<Vec<syn::WherePredicate>>,
     name: syn::Ident,
     backtrace_field: Option<Field>,
     implicit_fields: Vec<Field>,
@@ -194,6 +197,7 @@ struct NamedStructInfo {
 }
 
 struct TupleStructInfo {
+    display_bounds: Option<Vec<syn::WherePredicate>>,
     crate_root: UserInput,
     name: syn::Ident,
     generics: syn::Generics,
@@ -555,6 +559,12 @@ impl<'a> quote::ToTokens for ContextSelector<'a> {
             enum_name, variant_name,
         );
 
+        let mut where_clauses = self.0.provided_where_clauses();
+        where_clauses.extend(bounds::construction(
+            self.1,
+            &self.0.generics,
+            &self.0.crate_root,
+        ));
         let context_selector = ContextSelector {
             backtrace_field: self.1.backtrace_field.as_ref(),
             implicit_fields: &self.1.implicit_fields,
@@ -569,7 +579,7 @@ impl<'a> quote::ToTokens for ContextSelector<'a> {
             selector_base_name: variant_name,
             user_fields: selector_kind.user_fields(),
             visibility: selector_visibility,
-            where_clauses: &self.0.provided_where_clauses(),
+            where_clauses: &where_clauses,
             default_suffix,
         };
 
@@ -611,11 +621,23 @@ impl<'a> quote::ToTokens for DisplayImpl<'a> {
             })
             .collect();
 
+        let mut where_clauses = self.0.provided_where_clauses();
+        match bounds::display(
+            &self.0.variants,
+            &self.0.generics,
+            self.0.display_bounds.as_deref(),
+        ) {
+            Ok(b) => where_clauses.extend(b),
+            Err(e) => {
+                stream.extend(e.to_compile_error());
+                return;
+            }
+        }
         let display = Display {
             arms: &arms,
             original_generics: shared::GenericsWithoutDefaults::new(self.0.generics()),
             parameterized_error_name: &self.0.parameterized_name(),
-            where_clauses: &self.0.provided_where_clauses(),
+            where_clauses: &where_clauses,
         };
 
         let display_impl = quote! { #display };
@@ -657,12 +679,16 @@ impl<'a> quote::ToTokens for ErrorImpl<'a> {
             variants_to_provide.push(error_provide_match_arm);
         }
 
+        let mut where_clauses = self.0.provided_where_clauses();
+        for c in &self.0.variants {
+            where_clauses.extend(bounds::source(c, &self.0.generics, crate_root));
+        }
         let error_impl = Error {
             crate_root,
             parameterized_error_name: &self.0.parameterized_name(),
             source_arms: &variants_to_source,
             original_generics: shared::GenericsWithoutDefaults::new(&self.0.generics),
-            where_clauses: &self.0.provided_where_clauses(),
+            where_clauses: &where_clauses,
             provide_arms: &variants_to_provide,
         };
         let error_impl = quote! { #error_impl };
@@ -696,12 +722,16 @@ impl<'a> quote::ToTokens for ErrorCompatImpl<'a> {
             })
             .collect();
 
+        let mut where_clauses = self.0.provided_where_clauses();
+        for c in &self.0.variants {
+            where_clauses.extend(bounds::compat(c, &self.0.generics, &self.0.crate_root));
+        }
         let error_compat_impl = ErrorCompat {
             crate_root: &self.0.crate_root,
             parameterized_error_name: &self.0.parameterized_name(),
             backtrace_arms: &variants_to_backtrace,
             original_generics: shared::GenericsWithoutDefaults::new(&self.0.generics),
-            where_clauses: &self.0.provided_where_clauses(),
+            where_clauses: &where_clauses,
         };
 
         let error_compat_impl = quote! { #error_compat_impl };
@@ -735,6 +765,33 @@ impl NamedStructInfo {
         let field_container = &self.field_container;
 
         let user_fields = selector_kind.user_fields();
+        let mut error_bounds = where_clauses.clone();
+        error_bounds.extend(bounds::source(
+            field_container,
+            &self.generics,
+            &**crate_root,
+        ));
+        let mut compat_bounds = where_clauses.clone();
+        compat_bounds.extend(bounds::compat(
+            field_container,
+            &self.generics,
+            &**crate_root,
+        ));
+        let mut display_bounds = where_clauses.clone();
+        match bounds::display(
+            [field_container],
+            &self.generics,
+            field_container.display_bounds.as_deref(),
+        ) {
+            Ok(b) => display_bounds.extend(b),
+            Err(e) => return e.to_compile_error(),
+        }
+        let mut construction_bounds = where_clauses.clone();
+        construction_bounds.extend(bounds::construction(
+            field_container,
+            &self.generics,
+            &**crate_root,
+        ));
 
         use crate::shared::{Error, ErrorProvideMatchArm, ErrorSourceMatchArm};
 
@@ -759,7 +816,7 @@ impl NamedStructInfo {
             parameterized_error_name: &parameterized_struct_name,
             provide_arms: &[error_provide_match_arm],
             source_arms: &[error_source_match_arm],
-            where_clauses: &where_clauses,
+            where_clauses: &error_bounds,
         };
         let error_impl = quote! { #error_impl };
 
@@ -777,7 +834,7 @@ impl NamedStructInfo {
             parameterized_error_name: &parameterized_struct_name,
             backtrace_arms: &[match_arm],
             original_generics,
-            where_clauses: &where_clauses,
+            where_clauses: &compat_bounds,
         };
 
         use crate::shared::{Display, DisplayMatchArm};
@@ -796,7 +853,7 @@ impl NamedStructInfo {
             arms: &[arm],
             original_generics,
             parameterized_error_name: &parameterized_struct_name,
-            where_clauses: &where_clauses,
+            where_clauses: &display_bounds,
         };
 
         use crate::shared::ContextSelector;
@@ -827,7 +884,7 @@ impl NamedStructInfo {
             selector_base_name: &field_container.name,
             user_fields,
             visibility: selector_visibility,
-            where_clauses: &where_clauses,
+            where_clauses: &construction_bounds,
             default_suffix: &SuffixKind::Default,
         };
 
@@ -871,6 +928,7 @@ impl TupleStructInfo {
         let parameterized_struct_name = self.parameterized_name();
 
         let TupleStructInfo {
+            display_bounds,
             crate_root,
             generics,
             name,
@@ -884,6 +942,10 @@ impl TupleStructInfo {
             .flat_map(|c| c.predicates.iter().map(|p| quote! { #p }))
             .collect();
 
+        let inner_type = transformation.target_ty();
+        let display_bounds = display_bounds
+            .map(|b| b.into_iter().map(|p| quote!(#p)).collect::<Vec<_>>())
+            .unwrap_or_else(|| vec![quote!(#inner_type: ::core::fmt::Display)]);
         let generics = shared::GenericsWithoutDefaults::new(&generics);
 
         let description_fn = quote! {
@@ -932,6 +994,8 @@ impl TupleStructInfo {
             #[allow(single_use_lifetimes)]
             impl<#generics> #crate_root::Error for #parameterized_struct_name
             where
+                Self: ::core::fmt::Debug + ::core::fmt::Display,
+                #inner_type: #crate_root::Error,
                 #(#where_clauses),*
             {
                 #description_fn
@@ -945,6 +1009,7 @@ impl TupleStructInfo {
             #[allow(single_use_lifetimes)]
             impl<#generics> #crate_root::ErrorCompat for #parameterized_struct_name
             where
+                #inner_type: #crate_root::ErrorCompat,
                 #(#where_clauses),*
             {
                 #backtrace_fn
@@ -955,6 +1020,7 @@ impl TupleStructInfo {
             #[allow(single_use_lifetimes)]
             impl<#generics> ::core::fmt::Display for #parameterized_struct_name
             where
+                #(#display_bounds,)*
                 #(#where_clauses),*
             {
                 fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {

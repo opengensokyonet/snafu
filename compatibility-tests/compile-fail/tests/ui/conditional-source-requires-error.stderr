@@ -1,0 +1,31 @@
+error[E0277]: the trait bound `Payload: std::error::Error` is not satisfied
+  --> tests/ui/conditional-source-requires-error.rs:16:38
+   |
+16 |     requires_error(Wrapped { source: Payload });
+   |     --------------                   ^^^^^^^ unsatisfied trait bound
+   |     |
+   |     required by a bound introduced by this call
+   |
+help: the trait `std::error::Error` is not implemented for `Payload`
+  --> tests/ui/conditional-source-requires-error.rs:5:1
+   |
+ 5 | struct Payload;
+   | ^^^^^^^^^^^^^^
+help: the trait `std::error::Error` is conditionally implemented for `Wrapped<E>`
+  --> tests/ui/conditional-source-requires-error.rs:10:17
+   |
+10 | #[derive(Debug, Snafu)]
+   |                 ^^^^^ unsatisfied requirement introduced here: `Payload: AsErrorSource`
+   = note: required for `Payload` to implement `AsErrorSource`
+note: required for `Wrapped<Payload>` to implement `std::error::Error`
+  --> tests/ui/conditional-source-requires-error.rs:10:17
+   |
+10 | #[derive(Debug, Snafu)]
+   |                 ^^^^^ type parameter would need to implement `std::error::Error`
+   = help: consider manually implementing `std::error::Error` to avoid undesired bounds
+note: required by a bound in `requires_error`
+  --> tests/ui/conditional-source-requires-error.rs:14:27
+   |
+14 | fn requires_error(_: impl std::error::Error) {}
+   |                           ^^^^^^^^^^^^^^^^^ required by this bound in `requires_error`
+   = note: this error originates in the derive macro `Snafu` (in Nightly builds, run with -Z macro-backtrace for more info)

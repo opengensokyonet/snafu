@@ -2,7 +2,7 @@
 //!
 //! [`TryFuture`]: futures_core::future::TryFuture
 
-use crate::{Error, ErrorCompat, IntoError};
+use crate::IntoError;
 use core::{
     future::Future,
     marker::PhantomData,
@@ -56,8 +56,7 @@ pub trait TryFutureExt: TryFuture + Sized {
     /// each field, so the types are not required to exactly match.
     fn context<C, E>(self, context: C) -> Context<Self, C, E>
     where
-        C: IntoError<E, Source = Self::Error>,
-        E: Error + ErrorCompat;
+        C: IntoError<E, Source = Self::Error>;
 
     /// Extend a [`TryFuture`]'s error with lazily-generated context-sensitive
     /// information.
@@ -96,8 +95,7 @@ pub trait TryFutureExt: TryFuture + Sized {
     fn with_context<F, C, E>(self, context: F) -> WithContext<Self, F, E>
     where
         F: FnOnce(&mut Self::Error) -> C,
-        C: IntoError<E, Source = Self::Error>,
-        E: Error + ErrorCompat;
+        C: IntoError<E, Source = Self::Error>;
 
     /// Extend a [`TryFuture`]'s error with information from a string.
     ///
@@ -173,7 +171,6 @@ where
     fn context<C, E>(self, context: C) -> Context<Self, C, E>
     where
         C: IntoError<E, Source = Self::Error>,
-        E: Error + ErrorCompat,
     {
         Context {
             inner: self,
@@ -186,7 +183,6 @@ where
     where
         F: FnOnce(&mut Self::Error) -> C,
         C: IntoError<E, Source = Self::Error>,
-        E: Error + ErrorCompat,
     {
         WithContext {
             inner: self,
@@ -240,7 +236,6 @@ impl<Fut, C, E> Future for Context<Fut, C, E>
 where
     Fut: TryFuture,
     C: IntoError<E, Source = Fut::Error>,
-    E: Error + ErrorCompat,
 {
     type Output = Result<Fut::Ok, E>;
 
@@ -283,7 +278,6 @@ where
     Fut: TryFuture,
     F: FnOnce(&mut Fut::Error) -> C,
     C: IntoError<E, Source = Fut::Error>,
-    E: Error + ErrorCompat,
 {
     type Output = Result<Fut::Ok, E>;
 

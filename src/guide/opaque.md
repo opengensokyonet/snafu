@@ -51,6 +51,11 @@ fn is_user_locked(user_id: i32) -> Result<(), InnerError> {
 [`Display`]: std::fmt::Display
 [`ErrorCompat`]: crate::ErrorCompat
 
+Each delegated trait implementation has its own bounds on the inner
+type. A wrapper can therefore be constructed
+without being usable as a standard error. See the
+[generic wrapper example](crate::guide::generics#opaque-wrappers).
+
 ## `From`
 
 The `From` trait is also implemented to convert the inner type into

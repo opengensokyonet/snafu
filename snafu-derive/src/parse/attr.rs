@@ -54,6 +54,7 @@ def_attributes![
     (ContextSuffix, "context(suffix)", VALID_E),
     (CrateRoot, "crate_root", VALID_A),
     (Display, "display", VALID_E),
+    (DisplayBounds, "display_bounds", VALID_A),
     (Implicit, "implicit", VALID_D),
     (Module, "module", VALID_B),
     (ProvideExpression, "provide(type => expression)", VALID_F),

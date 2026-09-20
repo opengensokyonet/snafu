@@ -2,16 +2,15 @@
 
 Error types enhanced by SNAFU may contain generic type and lifetime parameters.
 
+Construction and diagnostic capabilities have independent bounds.
+
 ## Types
 
 ```rust
 # use snafu::prelude::*;
 #
 #[derive(Debug, Snafu)]
-enum Error<T>
-where
-    T: std::fmt::Display,
-{
+enum Error<T> {
     #[snafu(display("The value {value} was too large"))]
     TooLarge { value: T, limit: u32 },
 
@@ -86,33 +85,88 @@ fn validate_username<'a>(value: &'a str) -> Result<&'a str, Error<'a>> {
 }
 ```
 
-## Caveats
+## Conditional diagnostic capabilities
 
-A SNAFU [opaque type](crate::guide::opaque) requires that the
-contained type implements several traits, such as
-`Display`. However, type constraints cannot be automatically added
-to the opaque type because they are not allowed to reference the
-inner type without also exposing it publicly.
-
-The best option is to avoid using a generic opaque error. If you
-choose to expose a generic opaque error, you will likely need to add
-explicit duplicate type constraints:
+A generic source does not need to implement `Error`, `Debug`, or
+`Display` merely to be stored, matched, or wrapped with context:
 
 ```rust
-use snafu::prelude::*;
+use snafu::{ResultExt, Snafu};
 
 #[derive(Debug, Snafu)]
-struct ApiError<T>(Error<T>)
-// The bound is required to ensure that delegation can work.
-where
-    T: std::fmt::Debug;
-
-#[derive(Debug, Snafu)]
-enum Error<T>
-where
-    T: std::fmt::Debug,
-{
-    #[snafu(display("Boom: {value:?}"))]
-    Boom { value: T },
+#[snafu(display("read failed after {completed} bytes"))]
+struct ReadFailure<E> {
+    source: E,
+    completed: usize,
 }
+
+fn attach<T, E>(result: Result<T, E>) -> Result<T, ReadFailure<E>> {
+    result.context(ReadFailureSnafu { completed: 3usize })
+}
+
+struct Borrowed<'a>(&'a str); // No diagnostic traits.
+let text = String::from("device failure");
+let error = attach::<(), _>(Err(Borrowed(&text))).err().unwrap();
+assert_eq!(error.to_string(), "read failed after 3 bytes");
+assert_eq!(error.source.0, "device failure");
+
+use std::error::Error;
+let source = std::io::Error::new(std::io::ErrorKind::Other, "device failure");
+let error = attach::<(), _>(Err(source)).err().unwrap();
+assert!(error.source().unwrap().is::<std::io::Error>());
 ```
+
+The generated `Error` implementation requires `Self: Debug + Display`
+and the ability to expose each source through `AsErrorSource`. A generic
+value source normally needs `Error + 'static`. Non-static sources can
+still be carried as typed fields; this does not change the standard
+`Error::source` signature. Borrowed context fields do not independently
+need to be `'static` for the outer type to implement `Error`.
+
+`Display` is independently conditional on its formatting requirements.
+Use [`display_bounds`](crate::Snafu#controlling-display-bounds) to replace
+inference for complex expressions. `Debug` remains controlled by its
+own implementation: standard `derive(Debug)` can add conservative bounds,
+for example on a host parameter when the field is an associated type.
+
+`ErrorCompat` also has independent requirements. Retrieving a local
+backtrace need not constrain the source, whereas delegating to a source
+requires its `ErrorCompat` implementation. Iterating the standard error
+chain additionally requires `AsErrorSource`.
+
+### Source-aware implicit data
+
+Constructors requesting a backtrace or another implicit field still use
+`GenerateImplicitData::generate_with_source(&dyn Error)` when there is a
+source. They retain the required source capability. This exception
+preserves source-aware generation; the macro does not silently switch to
+`generate()` when a source cannot be exposed as a standard error.
+
+### Opaque wrappers
+
+A generic [opaque wrapper](crate::guide::opaque) conditionally delegates
+`Display`, `Error`, and `ErrorCompat` to the inner type. Construction need
+not require any of these capabilities:
+
+```rust
+use snafu::Snafu;
+
+#[derive(Debug, Snafu)]
+#[snafu(source(from(exact)))]
+struct ApiError<E>(E);
+
+struct Payload;
+let _: ApiError<Payload> = Payload.into();
+```
+
+The existing `source(from(exact))` option avoids a potentially overlapping
+generic `From` implementation. Exposing a generic opaque type still
+exposes its type parameter as part of the public API.
+
+### Inference boundaries
+
+Source-bound inference recognizes references and standard
+`Box`/`Rc`/`Arc` spellings, plus the `Option` used by `whatever`. It does not
+perform name resolution or arbitrary autoderef analysis. Custom smart
+pointers, aliases, and recursive generic sources are not covered by
+these inference guarantees.

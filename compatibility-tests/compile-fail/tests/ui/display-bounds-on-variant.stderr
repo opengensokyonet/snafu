@@ -1,0 +1,5 @@
+error: `display_bounds` attribute is only valid on an enum or a struct, not on an enum variant
+ --> tests/ui/display-bounds-on-variant.rs:4:13
+  |
+4 |     #[snafu(display_bounds())]
+  |             ^^^^^^^^^^^^^^^^

@@ -19,6 +19,7 @@ fn is_implicit_message(name: &proc_macro2::Ident) -> bool {
 
 pub struct Attributes {
     display: Option<Display>,
+    display_bounds: Option<super::DisplayBounds>,
     doc_comment: Option<DocComment>,
     module: Option<Module>,
     provide_expressions: Vec<ProvideExpression>,
@@ -36,6 +37,7 @@ impl Attributes {
         let mut context_flags = AtMostOne::attribute(attr::ContextFlag, location);
         let mut context_names = AtMostOne::attribute(attr::ContextName, location);
         let mut context_suffixes = AtMostOne::attribute(attr::ContextSuffix, location);
+        let mut display_bounds = AtMostOne::attribute(attr::DisplayBounds, location);
         let mut displays = AtMostOne::attribute(attr::Display, location);
         let mut doc_comment = DocCommentBuilder::default();
         let mut modules = AtMostOne::attribute(attr::Module, location);
@@ -54,6 +56,13 @@ impl Attributes {
                 ContextSuffix(a) => context_suffixes.push(a),
                 CrateRoot(a) => f(errors, a),
                 Display(a) => displays.push(a),
+                DisplayBounds(a) => {
+                    if matches!(location, ErrorLocation::OnNamedStruct) {
+                        display_bounds.push(a);
+                    } else {
+                        errors.push_invalid(a, location);
+                    }
+                }
                 DocComment(a) => doc_comment.push(&a.str.value()),
                 Implicit(a) => errors.push_invalid_flag(a, location),
                 Module(a) => modules.push(a),
@@ -71,6 +80,7 @@ impl Attributes {
         let context_name = context_names.finish_default(errors);
         let context_suffix = context_suffixes.finish_default(errors);
         let display = displays.finish_default(errors);
+        let display_bounds = display_bounds.finish_default(errors);
         let doc_comment = doc_comment.finish();
         let module = modules.finish_default(errors);
         let transparent = transparents.finish_default(errors);
@@ -158,6 +168,7 @@ impl Attributes {
 
         Self {
             display,
+            display_bounds,
             doc_comment,
             module,
             provide_expressions,
@@ -176,6 +187,7 @@ pub(super) fn parse_field_container(
 ) -> syn::Result<FieldContainer> {
     let Attributes {
         display,
+        display_bounds,
         doc_comment,
         module,
         provide_expressions,
@@ -300,6 +312,7 @@ pub(super) fn parse_field_container(
     let visibility = visibility.map(|v| v.into_arbitrary());
 
     errors.finish(FieldContainer {
+        display_bounds: display_bounds.map(|b| b.predicates.into_iter().collect()),
         backtrace_field,
         display_format,
         doc_comment,

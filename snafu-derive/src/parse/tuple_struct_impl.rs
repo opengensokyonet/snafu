@@ -10,6 +10,7 @@ use crate::{
 };
 
 struct Attributes {
+    display_bounds: Option<super::DisplayBounds>,
     crate_root: Option<CrateRoot>,
     provide_expressions: Vec<ProvideExpression>,
     source_from: Option<SourceFrom>,
@@ -20,6 +21,7 @@ impl Attributes {
         let location = ErrorLocation::OnTupleStruct;
         let mut errors = SynErrors::default();
 
+        let mut display_bounds = AtMostOne::attribute(attr::DisplayBounds, location);
         let mut crate_roots = AtMostOne::attribute(attr::CrateRoot, location);
         let mut provide_expressions = Vec::new();
         let mut source_froms = AtMostOne::attribute(attr::SourceFrom, location);
@@ -34,6 +36,7 @@ impl Attributes {
                 ContextSuffix(a) => errors.push_invalid(a, location),
                 CrateRoot(a) => crate_roots.push(a),
                 Display(a) => errors.push_invalid(a, location),
+                DisplayBounds(a) => display_bounds.push(a),
                 DocComment(_a) => { /* no-op */ }
                 Implicit(a) => errors.push_invalid_flag(a, location),
                 Module(a) => errors.push_invalid(a, location),
@@ -48,9 +51,11 @@ impl Attributes {
         });
 
         let crate_root = crate_roots.finish_default(&mut errors);
+        let display_bounds = display_bounds.finish_default(&mut errors);
         let source_from = source_froms.finish_default(&mut errors);
 
         errors.finish(Self {
+            display_bounds,
             crate_root,
             provide_expressions,
             source_from,
@@ -71,6 +76,7 @@ pub(crate) fn parse_tuple_struct(
     let (attrs, field_ty) = join_syn_error!(attrs, field_ty)?;
 
     let Attributes {
+        display_bounds,
         crate_root,
         provide_expressions,
         source_from,
@@ -86,6 +92,7 @@ pub(crate) fn parse_tuple_struct(
     let transformation = into_transformation(source_from, field_ty, true);
 
     Ok(TupleStructInfo {
+        display_bounds: display_bounds.map(|b| b.predicates.into_iter().collect()),
         crate_root,
         generics,
         name,

@@ -1,5 +1,6 @@
 # Upgrading from previous releases
 
+- [Unreleased changes](#unreleased-changes)
 - [Version 0.8 → 0.9](#version-08--09)
 - [Version 0.7 → 0.8](#version-07--08)
 - [Version 0.6 → 0.7](#version-06--07)
@@ -8,6 +9,50 @@
 - [Version 0.3 → 0.4](#version-03--04)
 - [Version 0.2 → 0.3](#version-02--03)
 - [Version 0.1 → 0.2](#version-01--02)
+
+## Unreleased changes
+
+The following changes are not included in 0.9.2.
+
+### Context construction no longer implies diagnostic traits
+
+`IntoError<E>` no longer requires `E: Error + ErrorCompat`. Result,
+Option, Future, and Stream context adapters likewise do not require
+those traits on the output. Generated selectors keep bounds needed for
+field conversion and source-aware implicit data.
+
+Removing a trait bound can break generic code that relied on its implied
+capabilities. Add the requirements explicitly where diagnostics are used:
+
+```rust
+use snafu::{ErrorCompat, IntoError};
+
+fn attach_and_describe<C, E>(context: C, source: C::Source) -> String
+where
+    C: IntoError<E>,
+    E: std::error::Error + ErrorCompat,
+{
+    let error = context.into_error(source);
+    let _backtrace = ErrorCompat::backtrace(&error);
+    error.to_string()
+}
+```
+
+The bound on `E` was implied by `IntoError<E>` in 0.9.2. Keep
+only the capabilities actually used by your own function.
+
+### Generated diagnostic implementations are conditional
+
+Generic error definitions can omit diagnostic bounds used only by the
+generated implementations. See the [generics guide](crate::guide::generics)
+for construction and standard source-chain examples.
+
+Directly formatted generic fields receive inferred `Display` bounds.
+The new type-level [`display_bounds`](crate::Snafu#controlling-display-bounds)
+attribute replaces this inference, including an explicit empty list.
+Existing bounds on the type are preserved. Keep them if they are part of
+your public contract, or move formatting-only requirements to the new
+attribute when relaxing that contract is intentional.
 
 ## Version 0.8 → 0.9
 
@@ -48,9 +93,10 @@ need that capability, you will need to create your own type.
 ### Opaque errors may be built from generic types by default
 
 Opaque errors now implement [`From`][] for any type that can be
-converted into the wrapped error type. For example:
+converted into the wrapped error type. The following shows the generated
+implementation signature schematically; it is not a complete program:
 
-```rust
+```rust,ignore
 #[derive(Debug, Snafu)]
 struct SomeOpaqueError(InnerError);
 

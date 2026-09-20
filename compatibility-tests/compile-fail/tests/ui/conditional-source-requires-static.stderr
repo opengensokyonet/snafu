@@ -1,0 +1,18 @@
+error[E0597]: `text` does not live long enough
+  --> tests/ui/conditional-source-requires-static.rs:18:47
+   |
+17 |     let text = String::from("borrowed");
+   |         ---- binding `text` declared here
+18 |     requires_error(Wrapped { source: Borrowed(&text) });
+   |     ------------------------------------------^^^^^----
+   |     |                                         |
+   |     |                                         borrowed value does not live long enough
+   |     argument requires that `text` is borrowed for `'static`
+19 | }
+   | - `text` dropped here while still borrowed
+   |
+note: requirement that the value outlives `'static` introduced here
+  --> tests/ui/conditional-source-requires-static.rs:15:27
+   |
+15 | fn requires_error(_: impl std::error::Error) {}
+   |                           ^^^^^^^^^^^^^^^^^

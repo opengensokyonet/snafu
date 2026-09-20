@@ -1,0 +1,5 @@
+error: Multiple `display_bounds` attributes are not supported on a named struct
+ --> tests/ui/display-bounds-duplicate.rs:3:27
+  |
+3 | #[snafu(display_bounds(), display_bounds())]
+  |                           ^^^^^^^^^^^^^^^^

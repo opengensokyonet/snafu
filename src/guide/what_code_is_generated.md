@@ -7,6 +7,14 @@ This procedural macro:
 - implements the [`Display`] trait
 - implements the [`ErrorCompat`] trait
 
+These implementations have independent bounds for generic error types.
+Context construction does not by itself
+require the output to implement diagnostic traits. `Error` requires
+`Self: Debug + Display` and source-chain capabilities; `ErrorCompat`
+requires only the backtrace capabilities it uses. See
+[generic types](crate::guide::generics) and
+[display bounds](crate::Snafu#controlling-display-bounds).
+
 ## Detailed example
 
 ```rust

@@ -2,7 +2,7 @@
 //!
 //! [`TryStream`]: futures_core::TryStream
 
-use crate::{Error, ErrorCompat, IntoError};
+use crate::IntoError;
 use core::{
     marker::PhantomData,
     pin::Pin,
@@ -56,8 +56,7 @@ pub trait TryStreamExt: TryStream + Sized {
     /// each field, so the types are not required to exactly match.
     fn context<C, E>(self, context: C) -> Context<Self, C, E>
     where
-        C: IntoError<E, Source = Self::Error> + Clone,
-        E: Error + ErrorCompat;
+        C: IntoError<E, Source = Self::Error> + Clone;
 
     /// Extend a [`TryStream`]'s error with lazily-generated
     /// context-sensitive information.
@@ -97,8 +96,7 @@ pub trait TryStreamExt: TryStream + Sized {
     fn with_context<F, C, E>(self, context: F) -> WithContext<Self, F, E>
     where
         F: FnMut(&mut Self::Error) -> C,
-        C: IntoError<E, Source = Self::Error>,
-        E: Error + ErrorCompat;
+        C: IntoError<E, Source = Self::Error>;
 
     /// Extend a [`TryStream`]'s error with information from a string.
     ///
@@ -176,7 +174,6 @@ where
     fn context<C, E>(self, context: C) -> Context<Self, C, E>
     where
         C: IntoError<E, Source = Self::Error> + Clone,
-        E: Error + ErrorCompat,
     {
         Context {
             inner: self,
@@ -189,7 +186,6 @@ where
     where
         F: FnMut(&mut Self::Error) -> C,
         C: IntoError<E, Source = Self::Error>,
-        E: Error + ErrorCompat,
     {
         WithContext {
             inner: self,
@@ -243,7 +239,6 @@ impl<St, C, E> Stream for Context<St, C, E>
 where
     St: TryStream,
     C: IntoError<E, Source = St::Error> + Clone,
-    E: Error + ErrorCompat,
 {
     type Item = Result<St::Ok, E>;
 
@@ -283,7 +278,6 @@ where
     St: TryStream,
     F: FnMut(&mut St::Error) -> C,
     C: IntoError<E, Source = St::Error>,
-    E: Error + ErrorCompat,
 {
     type Item = Result<St::Ok, E>;
 

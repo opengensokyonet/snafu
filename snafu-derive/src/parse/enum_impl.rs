@@ -9,6 +9,7 @@ use crate::{
 };
 
 struct Attributes {
+    display_bounds: Option<super::DisplayBounds>,
     context_suffix: Option<ContextSuffix>,
     crate_root: Option<CrateRoot>,
     module: Option<Module>,
@@ -21,6 +22,7 @@ impl Attributes {
         let mut errors = SynErrors::default();
 
         let mut context_suffixes = AtMostOne::attribute(attr::ContextSuffix, location);
+        let mut display_bounds = AtMostOne::attribute(attr::DisplayBounds, location);
         let mut crate_roots = AtMostOne::attribute(attr::CrateRoot, location);
         let mut modules = AtMostOne::attribute(attr::Module, location);
         let mut visibilities = AtMostOne::attribute(attr::Visibility, location);
@@ -35,6 +37,7 @@ impl Attributes {
                 ContextSuffix(a) => context_suffixes.push(a),
                 CrateRoot(a) => crate_roots.push(a),
                 Display(a) => errors.push_invalid(a, location),
+                DisplayBounds(a) => display_bounds.push(a),
                 DocComment(_a) => { /* no-op */ }
                 Implicit(a) => errors.push_invalid_flag(a, location),
                 Module(a) => modules.push(a),
@@ -50,10 +53,12 @@ impl Attributes {
 
         let context_suffix = context_suffixes.finish_default(&mut errors);
         let crate_root = crate_roots.finish_default(&mut errors);
+        let display_bounds = display_bounds.finish_default(&mut errors);
         let module = modules.finish_default(&mut errors);
         let visibility = visibilities.finish_default(&mut errors);
 
         errors.finish(Self {
+            display_bounds,
             context_suffix,
             crate_root,
             module,
@@ -90,6 +95,7 @@ pub(crate) fn parse_enum(
     };
 
     let Attributes {
+        display_bounds,
         context_suffix,
         crate_root,
         module,
@@ -105,6 +111,7 @@ pub(crate) fn parse_enum(
     let name = name.clone();
 
     errors.finish(EnumInfo {
+        display_bounds: display_bounds.map(|b| b.predicates.into_iter().collect()),
         crate_root,
         default_suffix,
         default_visibility,

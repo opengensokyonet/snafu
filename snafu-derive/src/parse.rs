@@ -45,6 +45,7 @@ mod kw {
     custom_keyword!(context);
     custom_keyword!(crate_root);
     custom_keyword!(display);
+    custom_keyword!(display_bounds);
     custom_keyword!(implicit);
     custom_keyword!(module);
     custom_keyword!(provide);
@@ -170,6 +171,7 @@ enum Attribute {
     ContextSuffix(ContextSuffix),
     CrateRoot(CrateRoot),
     Display(Display),
+    DisplayBounds(DisplayBounds),
     DocComment(DocComment),
     Implicit(Implicit),
     Module(Module),
@@ -210,6 +212,7 @@ fn syn_attrs(
                     },
                     NestedAttribute::CrateRoot(a) => f(Attribute::CrateRoot(a)),
                     NestedAttribute::Display(a) => f(Attribute::Display(a)),
+                    NestedAttribute::DisplayBounds(a) => f(Attribute::DisplayBounds(a)),
                     NestedAttribute::Implicit(a) => f(Attribute::Implicit(a)),
                     NestedAttribute::Module(a) => f(Attribute::Module(a)),
                     NestedAttribute::Provide(a) => match a {
@@ -359,6 +362,7 @@ enum NestedAttribute {
     Context(Context),
     CrateRoot(CrateRoot),
     Display(Display),
+    DisplayBounds(DisplayBounds),
     Implicit(Implicit),
     Module(Module),
     Provide(Provide),
@@ -377,6 +381,8 @@ impl Parse for NestedAttribute {
             input.parse().map(NestedAttribute::Context)
         } else if lookahead.peek(kw::crate_root) {
             input.parse().map(NestedAttribute::CrateRoot)
+        } else if lookahead.peek(kw::display_bounds) {
+            input.parse().map(NestedAttribute::DisplayBounds)
         } else if lookahead.peek(kw::display) {
             input.parse().map(NestedAttribute::Display)
         } else if lookahead.peek(kw::implicit) {
@@ -712,7 +718,9 @@ pub(crate) fn extract_field_names(mut s: &str) -> impl Iterator<Item = &str> {
             None => format_contents,
         };
 
-        if name.is_empty() {
+        let name = name.trim_end_matches(char::is_whitespace);
+        use syn::{ext::IdentExt, parse::Parser};
+        if name == "_" || name.starts_with("r#") || syn::Ident::parse_any.parse_str(name).is_err() {
             continue;
         }
 
@@ -1401,6 +1409,7 @@ def_attributes![
     ContextSuffix,
     CrateRoot,
     Display,
+    DisplayBounds,
     Implicit,
     Module,
     ProvideExpression,
@@ -1469,5 +1478,30 @@ mod test {
     #[test]
     fn ignores_format_spec() {
         assert_eq!(names("{a:?}"), ["a"]);
+    }
+}
+
+struct DisplayBounds {
+    keyword: kw::display_bounds,
+    parens: token::Paren,
+    predicates: Punctuated<syn::WherePredicate, token::Comma>,
+}
+
+impl Parse for DisplayBounds {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let content;
+        Ok(Self {
+            keyword: input.parse()?,
+            parens: parenthesized!(content in input),
+            predicates: content.parse_terminated(syn::WherePredicate::parse, token::Comma)?,
+        })
+    }
+}
+
+impl ToTokens for DisplayBounds {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.keyword.to_tokens(tokens);
+        self.parens
+            .surround(tokens, |tokens| self.predicates.to_tokens(tokens));
     }
 }

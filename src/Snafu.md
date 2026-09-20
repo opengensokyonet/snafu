@@ -7,6 +7,7 @@ unique situations.
 - [`context`](#controlling-context)
 - [`crate_root`](#controlling-how-the-snafu-crate-is-resolved)
 - [`display`](#controlling-display)
+- [`display_bounds`](#controlling-display-bounds)
 - [`implicit`](#controlling-implicitly-generated-data)
 - [`module`](#placing-context-selectors-in-modules)
 - [`provide`](#providing-data-beyond-the-error-trait)
@@ -29,6 +30,14 @@ it is valid. Detailed information on each attribute is below.
 | `module(N)`                     | Same as above, but with the module named `N` instead                                                        |
 | `context(suffix(N))`            | Changes the default context selector suffix from `Snafu` to `N`                                             |
 | `crate_root(C)`                 | Generated code refers to a crate named `C` instead of the default `snafu`                                   |
+
+### Type-level display bounds
+
+On an enum or a struct, `display_bounds(Predicates...)` replaces the
+inferred bounds on its generated `Display` implementation. An empty
+`display_bounds()` disables inference without adding predicates. This
+attribute is not valid on a variant or field. See
+[controlling display bounds](#controlling-display-bounds).
 
 ### Enum variant or struct
 
@@ -114,6 +123,78 @@ fn main() {
     assert_eq!(MissingPasswordSnafu.build().to_string(), "MissingPassword");
 }
 ```
+
+## Controlling display bounds
+
+Without `display_bounds`, the macro makes a best-effort inference of
+formatting bounds for generic fields referenced directly by the format
+string or its arguments.
+`{value}` needs the field's type to implement `Display`; `{value:?}`,
+`{value:#?}`, and `{value:x?}` need `Debug`; `{value:x}` needs `LowerHex`.
+Repeated uses combine their requirements. Bounds apply to the field's
+actual type, such as `Wrapper<T>`, rather than unconditionally to `T`.
+Enum variants contribute to a single `Display` implementation.
+
+For an arbitrary expression such as `value.describe()`, the macro cannot
+resolve the called trait or infer the expression's result type. Declare
+its requirements on the enclosing type:
+
+```rust
+use snafu::Snafu;
+use std::fmt::Display;
+
+trait Describe {
+    type Description;
+    fn describe(&self) -> Self::Description;
+}
+
+#[derive(Debug, Snafu)]
+#[snafu(
+    display("{}", value.describe()),
+    display_bounds(T: Describe, T::Description: Display)
+)]
+struct Described<T> {
+    value: T,
+}
+
+struct Label;
+impl Describe for Label {
+    type Description = &'static str;
+    fn describe(&self) -> Self::Description { "label" }
+}
+
+let error: Described<Label> = DescribedSnafu { value: Label }.build();
+assert_eq!(error.to_string(), "label");
+// Constructing the type does not require the Display implementation.
+let _: Described<()> = DescribedSnafu { value: () }.build();
+```
+
+Explicit predicates **replace all automatically inferred Display bounds**
+for that type; they are not appended to them. Predicates already declared
+on the original type remain in force, as do the separate requirements
+of `Error` and `ErrorCompat`. Put an enum's override on the enum itself.
+
+An empty override also bypasses format-string analysis:
+
+```rust
+use snafu::Snafu;
+
+#[derive(Debug, Snafu)]
+#[snafu(display(concat!("operation", " failed")), display_bounds())]
+struct Failure<T> {
+    value: T,
+}
+
+struct Payload; // No formatting traits.
+let error: Failure<Payload> = FailureSnafu { value: Payload }.build();
+assert_eq!(error.to_string(), "operation failed");
+```
+
+Formatting is still performed by `write!`. Automatic analysis is not a
+compiler type-inference API and does not guarantee support for future
+format-string extensions. If it cannot reliably parse a generic error's
+format string, use an explicit override. The compiler checks the final
+format string, expressions, and supplied predicates in either mode.
 
 ## Controlling context
 

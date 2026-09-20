@@ -473,7 +473,6 @@ pub mod context_selector {
             quote! {
                 impl<#generics> #crate_root::IntoError<#parameterized_error_name> for #parameterized_selector_name
                 where
-                    #parameterized_error_name: #crate_root::Error + #crate_root::ErrorCompat,
                     #(#extended_where_clauses),*
                 {
                     type Source = #source_ty;

@@ -1,0 +1,14 @@
+[package]
+name = "conditional-no-std"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+
+[dependencies]
+snafu = { path = "../..", default-features = false }
+
+[features]
+alloc = ["snafu/alloc"]
+futures = ["snafu/futures"]
+rust_1_81 = ["snafu/rust_1_81"]
+unstable-provider-api = ["snafu/unstable-provider-api"]

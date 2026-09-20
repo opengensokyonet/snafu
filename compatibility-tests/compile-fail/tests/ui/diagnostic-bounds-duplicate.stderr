@@ -1,0 +1,11 @@
+error: Multiple `error_bounds` attributes are not supported on a named struct
+ --> tests/ui/diagnostic-bounds-duplicate.rs:4:25
+  |
+4 | #[snafu(error_bounds(), error_bounds())]
+  |                         ^^^^^^^^^^^^^^
+
+error: Multiple `error_compat_bounds` attributes are not supported on an enum
+ --> tests/ui/diagnostic-bounds-duplicate.rs:8:32
+  |
+8 | #[snafu(error_compat_bounds(), error_compat_bounds())]
+  |                                ^^^^^^^^^^^^^^^^^^^^^

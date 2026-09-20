@@ -8,6 +8,8 @@ unique situations.
 - [`crate_root`](#controlling-how-the-snafu-crate-is-resolved)
 - [`display`](#controlling-display)
 - [`display_bounds`](#controlling-display-bounds)
+- [`error_bounds`](#controlling-diagnostic-bounds)
+- [`error_compat_bounds`](#controlling-diagnostic-bounds)
 - [`implicit`](#controlling-implicitly-generated-data)
 - [`module`](#placing-context-selectors-in-modules)
 - [`provide`](#providing-data-beyond-the-error-trait)
@@ -31,13 +33,17 @@ it is valid. Detailed information on each attribute is below.
 | `context(suffix(N))`            | Changes the default context selector suffix from `Snafu` to `N`                                             |
 | `crate_root(C)`                 | Generated code refers to a crate named `C` instead of the default `snafu`                                   |
 
-### Type-level display bounds
+### Type-level implementation bounds
 
 On an enum or a struct, `display_bounds(Predicates...)` replaces the
 inferred bounds on its generated `Display` implementation. An empty
 `display_bounds()` disables inference without adding predicates. This
 attribute is not valid on a variant or field. See
 [controlling display bounds](#controlling-display-bounds).
+
+`error_bounds(Predicates...)` and `error_compat_bounds(Predicates...)`
+likewise replace inference for their respective trait implementations.
+See [controlling diagnostic bounds](#controlling-diagnostic-bounds).
 
 ### Enum variant or struct
 
@@ -123,6 +129,49 @@ fn main() {
     assert_eq!(MissingPasswordSnafu.build().to_string(), "MissingPassword");
 }
 ```
+
+## Controlling diagnostic bounds
+
+`error_bounds(...)` replaces inferred predicates on the generated `Error`
+implementation; `error_compat_bounds(...)` does the same for `ErrorCompat`.
+Like `display_bounds(...)`, these attributes belong on the enclosing enum
+or struct, including tuple structs. Each affects only its named trait.
+An empty list disables inference for that implementation. Predicates
+from the type declaration remain in effect, and `Error` still requires
+`Self: Debug + Display`.
+
+Use an override when source inference cannot resolve an alias or a custom
+pointer's dereferencing behavior:
+
+```rust
+use snafu::{AsErrorSource, IntoError, Snafu};
+use std::error::Error;
+
+type Owned<T> = Box<T>;
+
+#[derive(Debug, Snafu)]
+#[snafu(display("operation failed"), error_bounds(T: AsErrorSource))]
+struct Failure<T: ?Sized> {
+    source: Owned<T>,
+}
+
+let source: Box<dyn Error> = Box::new(std::io::Error::new(
+    std::io::ErrorKind::Other, "read failed",
+));
+let error: Failure<dyn Error> = FailureSnafu.into_error(source);
+assert!(error.source().unwrap().is::<std::io::Error>());
+```
+
+Overrides must supply enough predicates for the generated method bodies
+to compile. They do not suppress errors, change source-chain delegation,
+or change constructor bounds for source-aware implicit data.
+
+For mutually recursive generic error types, an inferred bound on one
+type may depend on the implementation currently being generated for the
+other. Use an empty override when the bounds already declared on those
+types suffice, or provide the required predicates explicitly. Apply
+`display_bounds` and `error_compat_bounds` independently if formatting
+or backtrace delegation also crosses the cycle.
 
 ## Controlling display bounds
 

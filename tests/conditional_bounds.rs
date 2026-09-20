@@ -1,3 +1,8 @@
+#![cfg_attr(
+    feature = "unstable-provider-api",
+    feature(error_generic_member_access)
+)]
+
 //! Constructing a typed failure is independent of reporting it.
 use snafu::{ErrorCompat, IntoError, OptionExt, ResultExt, Snafu};
 use std::{error::Error, fmt};

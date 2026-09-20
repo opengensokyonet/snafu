@@ -108,3 +108,44 @@ mod core_functionality {
         }
     }
 }
+
+mod conditional_capabilities {
+    use snafu::{AsErrorSource, ErrorCompat, IntoError, Snafu};
+    use std::error::Error;
+
+    #[derive(Debug, Snafu)]
+    #[snafu(display("operation failed"), error_bounds(E: AsErrorSource))]
+    struct Failure<E> {
+        source: E,
+    }
+
+    #[derive(Debug, Snafu)]
+    #[snafu(error_compat_bounds(), display_bounds(T: std::fmt::Display))]
+    enum Recursive<T> {
+        #[snafu(display("leaf: {value}"))]
+        Leaf { value: T },
+        #[snafu(display("nested: {source}"))]
+        Nested {
+            #[snafu(backtrace)]
+            source: Box<Recursive<T>>,
+        },
+    }
+
+    #[test]
+    fn constructs_borrowed_payloads_without_diagnostic_traits() {
+        struct Payload<'a>(&'a str);
+        let text = String::from("payload");
+        let error: Failure<_> = FailureSnafu.into_error(Payload(&text));
+        assert_eq!(error.source.0, "payload");
+        assert_eq!(error.to_string(), "operation failed");
+    }
+
+    #[test]
+    fn recursive_capabilities_and_explicit_bounds_work() {
+        let leaf: Recursive<i32> = LeafSnafu { value: 42 }.build();
+        let error: Recursive<_> = NestedSnafu.into_error(Box::new(leaf));
+        assert_eq!(error.to_string(), "nested: leaf: 42");
+        assert!(error.source().unwrap().is::<Box<Recursive<i32>>>());
+        assert!(error.backtrace().is_none());
+    }
+}

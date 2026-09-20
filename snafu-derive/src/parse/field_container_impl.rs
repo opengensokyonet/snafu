@@ -20,6 +20,8 @@ fn is_implicit_message(name: &proc_macro2::Ident) -> bool {
 pub struct Attributes {
     display: Option<Display>,
     display_bounds: Option<super::DisplayBounds>,
+    error_bounds: Option<super::ErrorBounds>,
+    error_compat_bounds: Option<super::ErrorCompatBounds>,
     doc_comment: Option<DocComment>,
     module: Option<Module>,
     provide_expressions: Vec<ProvideExpression>,
@@ -38,6 +40,8 @@ impl Attributes {
         let mut context_names = AtMostOne::attribute(attr::ContextName, location);
         let mut context_suffixes = AtMostOne::attribute(attr::ContextSuffix, location);
         let mut display_bounds = AtMostOne::attribute(attr::DisplayBounds, location);
+        let mut error_bounds = AtMostOne::attribute(attr::ErrorBounds, location);
+        let mut error_compat_bounds = AtMostOne::attribute(attr::ErrorCompatBounds, location);
         let mut displays = AtMostOne::attribute(attr::Display, location);
         let mut doc_comment = DocCommentBuilder::default();
         let mut modules = AtMostOne::attribute(attr::Module, location);
@@ -63,6 +67,20 @@ impl Attributes {
                         errors.push_invalid(a, location);
                     }
                 }
+                ErrorBounds(a) => {
+                    if matches!(location, ErrorLocation::OnNamedStruct) {
+                        error_bounds.push(a);
+                    } else {
+                        errors.push_invalid(a, location);
+                    }
+                }
+                ErrorCompatBounds(a) => {
+                    if matches!(location, ErrorLocation::OnNamedStruct) {
+                        error_compat_bounds.push(a);
+                    } else {
+                        errors.push_invalid(a, location);
+                    }
+                }
                 DocComment(a) => doc_comment.push(&a.str.value()),
                 Implicit(a) => errors.push_invalid_flag(a, location),
                 Module(a) => modules.push(a),
@@ -81,6 +99,8 @@ impl Attributes {
         let context_suffix = context_suffixes.finish_default(errors);
         let display = displays.finish_default(errors);
         let display_bounds = display_bounds.finish_default(errors);
+        let error_bounds = error_bounds.finish_default(errors);
+        let error_compat_bounds = error_compat_bounds.finish_default(errors);
         let doc_comment = doc_comment.finish();
         let module = modules.finish_default(errors);
         let transparent = transparents.finish_default(errors);
@@ -169,6 +189,8 @@ impl Attributes {
         Self {
             display,
             display_bounds,
+            error_bounds,
+            error_compat_bounds,
             doc_comment,
             module,
             provide_expressions,
@@ -188,6 +210,8 @@ pub(super) fn parse_field_container(
     let Attributes {
         display,
         display_bounds,
+        error_bounds,
+        error_compat_bounds,
         doc_comment,
         module,
         provide_expressions,
@@ -313,6 +337,8 @@ pub(super) fn parse_field_container(
 
     errors.finish(FieldContainer {
         display_bounds: display_bounds.map(|b| b.predicates.into_iter().collect()),
+        error_bounds: error_bounds.map(|b| b.predicates.into_iter().collect()),
+        error_compat_bounds: error_compat_bounds.map(|b| b.predicates.into_iter().collect()),
         backtrace_field,
         display_format,
         doc_comment,

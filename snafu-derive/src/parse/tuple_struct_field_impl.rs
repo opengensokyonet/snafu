@@ -18,6 +18,8 @@ impl Attributes {
                 CrateRoot(a) => errors.push_invalid(a, location),
                 Display(a) => errors.push_invalid(a, location),
                 DisplayBounds(a) => errors.push_invalid(a, location),
+                ErrorBounds(a) => errors.push_invalid(a, location),
+                ErrorCompatBounds(a) => errors.push_invalid(a, location),
                 DocComment(_a) => { /* no-op */ }
                 Implicit(a) => errors.push_invalid_flag(a, location),
                 Module(a) => errors.push_invalid(a, location),

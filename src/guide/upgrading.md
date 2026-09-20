@@ -54,6 +54,11 @@ Existing bounds on the type are preserved. Keep them if they are part of
 your public contract, or move formatting-only requirements to the new
 attribute when relaxing that contract is intentional.
 
+When inferred predicates would create a cycle between generic error
+types, or do not describe an aliased or custom source pointer, use
+[`error_bounds` or `error_compat_bounds`](crate::Snafu#controlling-diagnostic-bounds)
+to replace inference for the affected implementation.
+
 ## Version 0.8 → 0.9
 
 ### `Whatever` vs `WhateverLocal`

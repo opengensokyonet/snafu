@@ -46,6 +46,8 @@ mod kw {
     custom_keyword!(crate_root);
     custom_keyword!(display);
     custom_keyword!(display_bounds);
+    custom_keyword!(error_bounds);
+    custom_keyword!(error_compat_bounds);
     custom_keyword!(implicit);
     custom_keyword!(module);
     custom_keyword!(provide);
@@ -172,6 +174,8 @@ enum Attribute {
     CrateRoot(CrateRoot),
     Display(Display),
     DisplayBounds(DisplayBounds),
+    ErrorBounds(ErrorBounds),
+    ErrorCompatBounds(ErrorCompatBounds),
     DocComment(DocComment),
     Implicit(Implicit),
     Module(Module),
@@ -213,6 +217,8 @@ fn syn_attrs(
                     NestedAttribute::CrateRoot(a) => f(Attribute::CrateRoot(a)),
                     NestedAttribute::Display(a) => f(Attribute::Display(a)),
                     NestedAttribute::DisplayBounds(a) => f(Attribute::DisplayBounds(a)),
+                    NestedAttribute::ErrorBounds(a) => f(Attribute::ErrorBounds(a)),
+                    NestedAttribute::ErrorCompatBounds(a) => f(Attribute::ErrorCompatBounds(a)),
                     NestedAttribute::Implicit(a) => f(Attribute::Implicit(a)),
                     NestedAttribute::Module(a) => f(Attribute::Module(a)),
                     NestedAttribute::Provide(a) => match a {
@@ -363,6 +369,8 @@ enum NestedAttribute {
     CrateRoot(CrateRoot),
     Display(Display),
     DisplayBounds(DisplayBounds),
+    ErrorBounds(ErrorBounds),
+    ErrorCompatBounds(ErrorCompatBounds),
     Implicit(Implicit),
     Module(Module),
     Provide(Provide),
@@ -383,6 +391,10 @@ impl Parse for NestedAttribute {
             input.parse().map(NestedAttribute::CrateRoot)
         } else if lookahead.peek(kw::display_bounds) {
             input.parse().map(NestedAttribute::DisplayBounds)
+        } else if lookahead.peek(kw::error_bounds) {
+            input.parse().map(NestedAttribute::ErrorBounds)
+        } else if lookahead.peek(kw::error_compat_bounds) {
+            input.parse().map(NestedAttribute::ErrorCompatBounds)
         } else if lookahead.peek(kw::display) {
             input.parse().map(NestedAttribute::Display)
         } else if lookahead.peek(kw::implicit) {
@@ -1410,6 +1422,8 @@ def_attributes![
     CrateRoot,
     Display,
     DisplayBounds,
+    ErrorBounds,
+    ErrorCompatBounds,
     Implicit,
     Module,
     ProvideExpression,
@@ -1481,27 +1495,38 @@ mod test {
     }
 }
 
-struct DisplayBounds {
-    keyword: kw::display_bounds,
-    parens: token::Paren,
-    predicates: Punctuated<syn::WherePredicate, token::Comma>,
+macro_rules! def_bounds_attributes {
+    ($(($name:ident, $keyword:ident)),* $(,)?) => {
+        $(
+            struct $name {
+                keyword: kw::$keyword,
+                parens: token::Paren,
+                predicates: Punctuated<syn::WherePredicate, token::Comma>,
+            }
+
+            impl Parse for $name {
+                fn parse(input: ParseStream) -> Result<Self> {
+                    let content;
+                    Ok(Self {
+                        keyword: input.parse()?,
+                        parens: parenthesized!(content in input),
+                        predicates: content.parse_terminated(syn::WherePredicate::parse, token::Comma)?,
+                    })
+                }
+            }
+
+            impl ToTokens for $name {
+                fn to_tokens(&self, tokens: &mut TokenStream) {
+                    self.keyword.to_tokens(tokens);
+                    self.parens.surround(tokens, |tokens| self.predicates.to_tokens(tokens));
+                }
+            }
+        )*
+    };
 }
 
-impl Parse for DisplayBounds {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let content;
-        Ok(Self {
-            keyword: input.parse()?,
-            parens: parenthesized!(content in input),
-            predicates: content.parse_terminated(syn::WherePredicate::parse, token::Comma)?,
-        })
-    }
-}
-
-impl ToTokens for DisplayBounds {
-    fn to_tokens(&self, tokens: &mut TokenStream) {
-        self.keyword.to_tokens(tokens);
-        self.parens
-            .surround(tokens, |tokens| self.predicates.to_tokens(tokens));
-    }
-}
+def_bounds_attributes![
+    (DisplayBounds, display_bounds),
+    (ErrorBounds, error_bounds),
+    (ErrorCompatBounds, error_compat_bounds),
+];

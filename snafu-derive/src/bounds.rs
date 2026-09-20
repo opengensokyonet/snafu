@@ -25,6 +25,36 @@ fn depends_on_generics(ty: &Type, generics: &Generics) -> bool {
     contains(ty.to_token_stream(), &names)
 }
 
+// A bound on the implementation being generated would make trait selection
+// depend on itself. The implementation body can use that implementation instead.
+fn contains_self(ty: &Type, name: &syn::Ident) -> bool {
+    struct FindSelf<'a> {
+        name: &'a syn::Ident,
+        found: bool,
+    }
+    impl syn::visit_mut::VisitMut for FindSelf<'_> {
+        fn visit_type_path_mut(&mut self, path: &mut syn::TypePath) {
+            // Qualified paths can refer to a different type with the same
+            // final name. Only these paths identify the current type locally.
+            let segments = &path.path.segments;
+            let local = path.path.leading_colon.is_none()
+                && (segments.len() == 1 || (segments.len() == 2 && segments[0].ident == "self"));
+            if path.qself.is_none()
+                && local
+                && segments
+                    .last()
+                    .map_or(false, |s| s.ident == *self.name || s.ident == "Self")
+            {
+                self.found = true;
+            }
+            syn::visit_mut::visit_type_path_mut(self, path);
+        }
+    }
+    let mut visitor = FindSelf { name, found: false };
+    syn::visit_mut::VisitMut::visit_type_mut(&mut visitor, &mut ty.clone());
+    visitor.found
+}
+
 fn inner_type<'a>(ty: &'a Type, name: &str) -> Option<&'a Type> {
     let Type::Path(p) = ty else { return None };
     let last = p.path.segments.last()?;
@@ -44,6 +74,7 @@ pub(crate) fn source(
     container: &FieldContainer,
     generics: &Generics,
     root: &dyn ToTokens,
+    error_name: Option<&syn::Ident>,
 ) -> Vec<TokenStream> {
     let Some(source) = container.selector_kind.source_field() else {
         return vec![];
@@ -69,10 +100,14 @@ pub(crate) fn source(
             },
         }
     }
+    if error_name.map_or(false, |name| contains_self(ty, name)) {
+        return vec![quote!(#ty: 'static)];
+    }
     vec![quote!(#ty: #root::AsErrorSource)]
 }
 
 pub(crate) fn compat(
+    error_name: &syn::Ident,
     container: &FieldContainer,
     generics: &Generics,
     root: &dyn ToTokens,
@@ -84,7 +119,7 @@ pub(crate) fn compat(
         .filter(|s| s.backtrace_delegate)
     {
         let ty = s.transformation.target_ty();
-        if depends_on_generics(ty, generics) {
+        if depends_on_generics(ty, generics) && !contains_self(ty, error_name) {
             result.push(quote!(#ty: #root::ErrorCompat));
         }
     }
@@ -116,12 +151,13 @@ pub(crate) fn construction(
     // generate_with_source really consumes a dyn Error. Keep that requirement
     // only for constructors that request implicit data; do not discard its source.
     if !container.implicit_fields.is_empty() || container.backtrace_field.is_some() {
-        result.extend(source(container, generics, root));
+        result.extend(source(container, generics, root, None));
     }
     result
 }
 
 pub(crate) fn display<'a>(
+    error_name: &syn::Ident,
     containers: impl IntoIterator<Item = &'a FieldContainer>,
     generics: &Generics,
     explicit: Option<&[WherePredicate]>,
@@ -138,7 +174,7 @@ pub(crate) fn display<'a>(
                 .unwrap()
                 .transformation
                 .target_ty();
-            if depends_on_generics(ty, generics) {
+            if depends_on_generics(ty, generics) && !contains_self(ty, error_name) {
                 let b = quote!(#ty: ::core::fmt::Display);
                 bounds.insert(b.to_string(), b);
             }
@@ -202,7 +238,9 @@ pub(crate) fn display<'a>(
             }
             // Match arms bind fields by reference; Pointer formats that reference
             // rather than requiring the referent to implement Pointer.
-            if format_trait == "Pointer" {
+            if format_trait == "Pointer"
+                || (format_trait == "Display" && contains_self(ty, error_name))
+            {
                 continue;
             }
             let trait_name = syn::Ident::new(format_trait, span);

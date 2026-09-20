@@ -167,6 +167,19 @@ exposes its type parameter as part of the public API.
 
 Source-bound inference recognizes references and standard
 `Box`/`Rc`/`Arc` spellings, plus the `Option` used by `whatever`. It does not
-perform name resolution or arbitrary autoderef analysis. Custom smart
-pointers, aliases, and recursive generic sources are not covered by
-these inference guarantees.
+perform name resolution or arbitrary autoderef analysis.
+
+Direct self-recursion, such as `source: Box<Failure<T>>` inside
+`Failure<T>`, does not introduce a circular bound on the generated
+implementation. The source must still be `'static`. Formatting and
+backtrace delegation likewise avoid direct self-referential predicates.
+This detection recognizes the local type name and `self::Name`;
+other qualified paths may need an explicit override.
+
+For aliases, custom smart pointers, or mutually recursive generic types,
+use [`error_bounds` and `error_compat_bounds`](crate::Snafu#controlling-diagnostic-bounds)
+to replace the relevant inferred predicates. These overrides preserve
+method-call autoderef in `source()`; they do not require the pointer
+itself to implement `Error`. A custom type named `Box`, `Rc`, or `Arc`
+may also need an override because inference recognizes their spelling,
+not their definition.
